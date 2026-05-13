@@ -51,3 +51,53 @@
 **What Claude did:** Suggested waitForSelector with longer timeouts.
 
 **What I changed / accepted / rejected:** Rejected the simple timeout approach — it just masked the problem. Instead wrote a loadContactPage() helper function that retries page navigation up to 3 times checking for actual page content before proceeding. This is a more robust pattern. Also decided NOT to fix security and load test failures since those failures correctly document real infrastructure bugs on the site.
+
+---
+
+## Prompt #6 — Page Object Model Refactor
+
+**What I asked:** Refactor the raw page.locator() calls scattered across spec files into proper Page Object Model classes so tests are easier to maintain.
+
+**What Claude did:** Generated `pages/HomePage.ts`, `pages/ContactPage.ts`, and `pages/CareersPage.ts` — each class encapsulates its own `goto()` with retry logic and exposes locator methods as typed getters.
+
+**What I changed / accepted / rejected:** Accepted the overall POM structure. Changed `ContactPage.goto()` to retry up to 5 times (not 3) and poll specifically for `#Email` visibility instead of just checking title text, because the contact page has a heavier JS payload that loads after the title is set. Accepted `HomePage.goto()` with 3 retries checking title for `503`. Added `scrollToBottom()` to both `HomePage` and `CareersPage` since multiple tests needed it.
+
+---
+
+## Prompt #7 — Utilities and Shared Fixtures
+
+**What I asked:** Create shared test fixtures and utility functions that can be reused across all spec files.
+
+**What Claude did:** Generated `utils/fixtures.ts` exporting `BASE_URL`, `validContactForm` test data, `mobileViewport`, and `tabletViewport` constants. Generated `utils/helpers.ts` with `checkHorizontalOverflow()`, `captureConsoleErrors()`, and `measureResponseTime()` utility functions.
+
+**What I changed / accepted / rejected:** Accepted as-is. The `validContactForm` object uses a realistic but fake identity (Jane Doe / Acme Corp) which is intentional — tests should not submit real personal data to the live site. The `measureResponseTime` helper became the basis for the load test timing logic.
+
+---
+
+## Prompt #8 — Integration Tests with Network Interception
+
+**What I asked:** Write integration tests that verify form submission at the network level, not just the UI level, using Playwright route interception.
+
+**What Claude did:** Generated `tests/integration/form-integration.spec.ts` with 6 tests: POST intercept on submit, no sensitive data in URL params after submission, newsletter form intercept (conditional skip if not present), third-party render-blocking scripts check via Performance API, no 5xx responses on /contact-us load, and all API calls use HTTPS.
+
+**What I changed / accepted / rejected:** Accepted the render-blocking script test — it uses `performance.getEntriesByType('resource')` with `renderBlockingStatus` which is a modern browser API. The newsletter test uses `test.skip()` if no newsletter input is found, which is the right pattern for optional features. Kept the aggressive URL matching (`contact | form | submit`) for POST detection since techdome.io's form endpoint is not publicly documented.
+
+---
+
+## Prompt #9 — Playwright Config Hardening
+
+**What I asked:** Finalize playwright.config.ts with HTML reporter, screenshot on failure, trace on retry, and the 5-worker hard cap aligned with load test constraints.
+
+**What Claude did:** Generated final `playwright.config.ts` with `fullyParallel: true`, `workers: 5` hard cap, `retries: 2` in CI, HTML report to `playwright-report/`, `screenshot: 'only-on-failure'`, `trace: 'on-first-retry'`, and `baseURL: 'https://techdome.io'`.
+
+**What I changed / accepted / rejected:** Accepted as-is. The 5-worker cap comment in the config was my addition — Claude wrote it without the comment but I added an explicit note marking it as a hard constraint tied to BUG-008 load test evidence. Set `timeout: 30000` globally to accommodate the intermittent 503 slowness without inflating individual test timeouts.
+
+---
+
+## Prompt #10 — Load Test and Results Documentation
+
+**What I asked:** Run the load test and capture the p50/p95 timing results into a structured results file.
+
+**What Claude did:** The load test in `tests/load/load.spec.ts` ran 10 sequential page loads against `/contact-us` with 5 parallel workers, computed p50/p95/min/max, and auto-wrote the results to `docs/load-test-results.md`.
+
+**What I changed / accepted / rejected:** Results showed `/contact-us` p95 = 4455 ms against a 3000 ms threshold — a confirmed FAIL documented as BUG-008. Accepted the auto-generated results file format. The test writes the markdown table itself on completion which keeps results reproducible. Did not change the threshold — 3 seconds is a reasonable UX target and the failure is a real finding.
