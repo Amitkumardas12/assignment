@@ -1,9 +1,11 @@
 import { test, expect } from '@playwright/test';
 import { validContactForm } from '../../utils/fixtures';
+import { ContactPage } from '../../pages/ContactPage';
 
 test.describe('Form Integration — Network Intercepts', () => {
   test('contact form POST request is intercepted on submission', async ({ page }) => {
-    await page.goto('/contact-us');
+    const contactPage = new ContactPage(page);
+    await contactPage.goto();
 
     let formRequestCaptured = false;
     let capturedPayload: string | null = null;
@@ -18,18 +20,13 @@ test.describe('Form Integration — Network Intercepts', () => {
       }
     });
 
-    // Fill and submit form
-    const companyField = page.locator('form input').nth(0);
-    const firstNameField = page.locator('input[name*="first" i], input[placeholder*="first" i]').first();
-    const lastNameField = page.locator('input[name*="last" i], input[placeholder*="last" i]').first();
-    const emailField = page.locator('input[type="email"], input[name*="email" i]').first();
-    const textarea = page.locator('textarea').first();
-
-    await companyField.fill(validContactForm.company);
-    await firstNameField.fill(validContactForm.firstName);
-    await lastNameField.fill(validContactForm.lastName);
-    await emailField.fill(validContactForm.email);
-    await textarea.fill(validContactForm.message);
+    await contactPage.fillRequiredFields({
+      company: validContactForm.company,
+      firstName: validContactForm.firstName,
+      lastName: validContactForm.lastName,
+      email: validContactForm.email,
+    });
+    await contactPage.messageTextarea().fill(validContactForm.message);
 
     await page.route('**/*', async (route) => {
       const request = route.request();
@@ -49,7 +46,7 @@ test.describe('Form Integration — Network Intercepts', () => {
       }
     });
 
-    await page.getByRole('button', { name: /send message/i }).click();
+    await contactPage.submit();
 
     // Allow time for any async submission
     await page.waitForTimeout(1000);
@@ -61,15 +58,13 @@ test.describe('Form Integration — Network Intercepts', () => {
   });
 
   test('form submission does not expose sensitive data in URL query params', async ({ page }) => {
-    await page.goto('/contact-us');
+    const contactPage = new ContactPage(page);
+    await contactPage.goto();
 
-    const companyField = page.locator('form input').nth(0);
-    const emailField = page.locator('input[type="email"], input[name*="email" i]').first();
+    await contactPage.companyField().fill(validContactForm.company);
+    await contactPage.emailField().fill(validContactForm.email);
 
-    await companyField.fill(validContactForm.company);
-    await emailField.fill(validContactForm.email);
-
-    await page.getByRole('button', { name: /send message/i }).click();
+    await contactPage.submit();
     await page.waitForTimeout(1000);
 
     const currentUrl = page.url();
